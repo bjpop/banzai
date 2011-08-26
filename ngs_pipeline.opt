@@ -1,0 +1,34 @@
+reference: /vlsci/VLSCI/bjpop/scratch/references/kat.holt/Klebs_MGH78578_withPlasmid.mfasta
+sequences: /vlsci/VLSCI/bjpop/scratch/sequences/kat.holt/*.fastq
+pipeline:
+   logDir: log
+   logFile: pipeline.log
+   style: run
+   procs: 8
+   paired: True
+stageDefaults:
+   distributed: False
+   walltime: "02:00:00"
+   memInGB: 10
+   modules:
+      - "bwa-gcc"
+      - "samtools-gcc/0.1.8"
+stages:
+   mkRefDataBase:
+      command: "lambda ref, out: 'bwa index %s -a bwtsw' % ref"
+   alignSequence:
+      command: "lambda ref, seq, out: 'bwa aln -t 8 %s %s > %s' % (ref, seq, out)"
+      walltime: "06:00:00"
+      queue: smp
+   alignToSam:
+      command: "lambda ref, align1, align2, seq1, seq2, out: 'bwa sampe %s %s %s %s %s > %s' % (ref, align1, align2, seq1, seq2, out)"
+   samToBam:
+      command: "lambda ref, sam, out: 'samtools import %s %s %s' % (ref, sam, out)"
+   sortBam:
+      command: "lambda bam, out: 'samtools sort %s %s' % (bam, out)"
+   pileupFull:
+      command: "lambda ref, bam, out: 'samtools pileup -cf %s %s > %s' % (ref, bam, out)"
+   callSNPs:
+      command: "lambda ref, bam, out: 'samtools pileup -vcf %s %s > %s' % (ref, bam, out)"
+   varFilter:
+      command: "lambda fullPileup, varPileup, chromName, chromLength, out: './varFilter %s %s %s %s %s' % (fullPileup, varPileup, chromName, chromLength, out)"

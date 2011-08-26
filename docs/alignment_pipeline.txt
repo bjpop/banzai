@@ -1,0 +1,36 @@
+### these steps need to be run for each set of fastq read files + reference file
+# generate alignment
+# two steps can run in parallel
+bwa aln -t 8 ref.fasta data/reads_1.fastq > reads_1.sai
+bwa aln -t 8 ref.fasta data/reads_1.fastq > reads_1.sai
+
+# make sorted bam file (depends on .sai files created in previous step)
+# each step depends on prior step
+bwa sampe ref.fasta reads_1.sai reads_2.sai reads_1.fastq reads_2.fastq > reads.sam
+samtools import ref.fasta reads.sam reads.bam
+samtools sort reads.bam reads_sorted
+
+# generate full pileup (depends on sorted bam)
+samtools pileup -cf ref.fasta reads_sorted.bam > reads_full.pileup
+
+# call SNPs (depends on sorted bam)
+samtools pileup -vcf ref.fasta reads_sorted.bam > reads.var.pileup
+
+### the filtering step needs to be run for each of the output pileups, with each chromosome provided in the reference file ($chrname below)
+### i.e. for reference file:
+### >chr1
+### >chr2
+### >plasmid1
+### the filter step would be run using 'chr1', 'chr2', 'plasmid1' as values of $chrname
+
+# filter SNPs based on depth (depends on full pileup and SNP pileup)
+# note this may need to be done for multiple values of '$chrname'
+grep '$chrname' reads_full.pileup | awk "BEGIN{total=0} {total += $8} END{print total}" > ref_$chrname.depth
+
+### this is a bit of perl I use to obtain the parameters (minimum & maximum depth) for filtering of SNPs
+	my $depth = `cat ref_$chrname.depth`;
+	my $minD = int $depth/$length/2 + 1;
+	my $maxD = int $depth/$length*2 - 1;
+
+### these parameters are then used in the varFilter:
+samtools.pl varFilter -D $maxD -d $minD reads_var.pileup | awk '$3!="*" && $4!="*" && ($4=="A" || $4=="C" || $4=="G" || $4=="T") && $5 > 30 && $1=="$chrname"' > reads_$chrname_var_filtered.pileup
